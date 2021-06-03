@@ -1,0 +1,259 @@
+#########################################################################################
+# From Scott Ferson's helpful notes and website: https://sites.google.com/site/confidenceboxes/software
+## for what has been already commentd by Scott
+# for what has been commented by me
+###########################################################################################
+
+#COPY AND PASTE EVERYTHING ON R AND PRESS ENTER, THE DATA FOR ESREL PAPER IS AT THE END#
+############################################################################################
+
+# x[i] ~ Bernoulli(parameter), x[i] is either 0 or 1
+
+nextvalue.bernoulli <- function(x) {n <- length(x); k <- sum(x); return(env(bernoulli(k/(n+1)), bernoulli((k+1)/(n+1))))}
+parameter.bernoulli <- function(x) {n <- length(x); k <- sum(x); return(env(beta(k, n-k+1), beta(k+1, n-k)))}
+
+# x[i] ~ binomial(N, p), for known N, x[i] is a nonnegative integer less than or equal to N
+
+nextvalue.binomial <- function(x,N) {n <- length(x); k<-sum(x); return(env(betabinomial(N,k,n*N-k+1),betabinomial(N,k+1, n*N-k)))}
+parameter.binomial <- function(x,N) {n <- length(x); k <- sum(x); return(env(beta(k, n*N-k+1), beta(k+1, n*N-k)))}
+
+# x[i] ~ binomial(N, p), for unknown N, x[i] is a nonnegative integer
+
+# see https://sites.google.com/site/cboxbinomialnp/
+nextvalue.binomialnp <- function(x) { }
+parameter.binomialnp.n <- function(x) { }
+parameter.binomialnp.p <- function(x) { }
+
+# x[i] ~ Poisson(parameter), x[i] is a nonnegative integer
+
+nextvalue.poisson <- function(x) {n <- length(x); k = sum(x); return(env(negativebinomial(size=k, prob=1-1/(n+1)),negativebinomial(size=k+1, prob=1-1/(n+1))))}
+parameter.poisson <- function(x) {n <- length(x); k = sum(x); return(env(gamma(shape=k, rate=n),gamma(shape=k+1, rate=n)))}
+
+# x[i] ~ exponential(parameter), x[i] is a nonnegative integer
+
+nextvalue.exponential <- function(x) {n <- length(x); k = sum(x); return(gammaexponential(shape=n, rate=k))}
+parameter.exponential <- function(x) {n <- length(x); k = sum(x); return(gamma(shape=n, rate=k))}
+
+qgammaexponential <- function(p, shape, rate=1, scale=1/rate) rate * ((1-p)^(-1/shape) - 1)
+rgammaexponential <- function(many, shape, rate=1, scale=1/rate) return(qgammaexponential(runif(many),shape,rate,scale))
+
+# x[i] ~ normal(mu, sigma)
+
+nextvalue.normal <- function(x) {n <- length(x); return(mean(x) + sd(x) * student(n - 1) * sqrt(1 + 1 / n))}
+parameter.normal.mu <- function(x) {n <- length(x); return(mean(x) + sd(x) * student(n - 1) / sqrt(n))}
+parameter.normal.sigma <- function(x) {n <- length(x); return(sqrt(var(x)*(n-1)/chisquared(n-1)))}
+
+# x[i] ~ lognormal(mu, sigma), x[i] is a positive value whose logarithm is distributed as normal(mu, sigma)
+
+nextvalue.lognormal <- function(x) {n <- length(x); return(exp(mean(log(x)) + sd(log(x)) * student(n - 1) * sqrt(1+1/n)))}
+parameter.lognormal.mu <- function(x) {n <- length(x); return(mean(log(x)) + sd(log(x)) * student(n - 1) / sqrt(n))}
+parameter.lognormal.sigma <- function(x) {n <- length(x); return(sqrt(var(log(x))*(n-1)/chisquared(n-1)))}
+
+# x[i] ~ uniform(minimum, maximum), or
+# x[i] ~ uniform(midpoint, width)
+
+nextvalue.uniform <- function(x) {n=length(x); w=(max(x)-min(x))/beta(length(x)-1,2); m=(max(x)-w/2)+(w-(max(x)-min(x)))*uniform(0,1); return(uniform(m-w/2, m+w/2))}
+parameter.uniform.minimum <- function(x) {n=length(x); w=(max(x)-min(x))/beta(length(x)-1,2); m=(max(x)-w/2)+(w-(max(x)-min(x)))*uniform(0,1); return(m-w/2)}
+parameter.uniform.maximum <- function(x) {n=length(x); w=(max(x)-min(x))/beta(length(x)-1,2); m=(max(x)-w/2)+(w-(max(x)-min(x)))*uniform(0,1); return(m+w/2)}
+parameter.uniform.width <- function(x) return((max(x)-min(x))/beta(length(x)-1,2))
+parameter.uniform.midpoint <- function(x) {w=(max(x)-min(x))/beta(length(x)-1,2); return((max(x)-w/2)+(w-(max(x)-min(x)))*uniform(0,1))}
+
+# x[i] ~ F, a continuous but unknown distribution
+
+nextvalue.nonparametric <- function(x) return(env(histogram(c(x, Inf)), histogram(c(x, -Inf))))
+
+# x[i] ~ normal(mu1, sigma1), y[j] ~ normal(mu2, sigma2), x and y are independent
+
+parameter.normal.meandifference <- function(x, y) parameter.normal.mu(x) - parameter.normal.mu(y)
+
+# x[i] = Y + error[i],  error[j] ~ F,  F unknown,  Y fixed,  x[i] and error[j] are independent
+
+parameter.nonparametric.deconvolution <- function(x, error) {# i.e., the c-box for Y
+    z = NULL
+    for(jj in 1:length(error)) z = c(z, y - error[jj])
+    z = sort(z)
+    Q = Get_Q(length(y), length(error))
+    w = Q / sum( Q )
+    env(mixture(z,w), mixture(c(z[-1],Inf),w))
+    }   
+
+
+#############################################################################
+# Ancillary functions
+#############################################################################
+
+# these functions may be replaced with better representations of distributions that make subsequent calculations easier
+
+many = 2000  # increase for more accuracy
+
+beta <- function(v,w) if (v==0) rep(0,many) else if (w==0) rep(1,many) else rbeta(many, v, w)
+bernoulli <- function(p) runif(many) < p
+betabinomial <- function(size,v,w) rbinom(many, size, beta(v,w))          
+negativebinomial <- function(size,prob) rnbinom(many, size, prob)
+gamma <- function(shape,rate=1,scale=1/rate) {rate = 1/scale; rgamma(many, shape,rate)}
+gammaexponential <- function(shape,rate=1,scale=1/rate) {rate = 1/scale; rexp(many,gamma(shape,rate))}
+normal <- function(m,s) rnormal(many, m,s)
+student <- function(v) rt(many, v)
+chisquared <- function(v) rchisq(many, v)
+lognormal <- function(m,s) rlnorm(many, m,s)
+uniform <- function(a,b) runif(many, a,b)
+histogram <- function(x) x[trunc(runif(many)*length(x))+1]
+mixture <- function(x,w) {r=sort(runif(many)); x=c(x[1],x); w=cumsum(c(0,w))/sum(w); u=NULL; j=length(x); for (p in rev(r)) {repeat {if (w[[j]] <= p) break; j = j - 1}; u=c(x[[j]],u); }; u[order(runif(length(u)))] }
+
+env <- function(x,y) c(x,y)
+
+# Bayes' rule
+Bzero <- 1e-6
+Bone <- 1-Bzero
+ratiokm <- function(k,m) return(1/(1+m/k)) 
+ratioKN <- function(k,n) return(k/n)
+jeffkm = function(k,m) return(beta(k+0.5, m+0.5))
+jeffKN = function(k,n) return(beta(k+0.5, n-k+0.5))
+km <- function(k,m) {
+  if ((k < 0)  || (m < 0)) stop('Improper arguments to function km')
+  return(pmin(pmax(env(beta(k,m+1),beta(k+1,m)),Bzero),Bone))
+  }
+KN = function(k,n) {
+  if ((k < 0)  || (n < k)) stop('Improper arguments to function KN')
+  return(pmin(pmax(env(beta(k,n-k+1),beta(k+1,pmax(0,n-k))),Bzero), Bone))
+  }
+Bppv = function(p,s,t) return(1/(1+((1/p-1)*(1-t))/s))
+Bnpv = function(p,s,t) return(1/(1+(1-s)/(t*(1/p-1))))
+# the mk argments below can be km, KN, jeffkm, jeffKN, ratiokm, ratioKN
+ppv = function(pk,pm,sk,sm,tk,tm, mk=km) return(Bppv(mk(pk,pm), mk(sk,sm), mk(tk,tm)))
+npv = function(pk,pm,sk,sm,tk,tm, mk=km) return(Bnpv(mk(pk,pm), mk(sk,sm), mk(tk,tm)))
+
+ANDi = function(x,y) {
+  nx = length(x)
+  ny = length(y)
+  if ((nx==1) && (ny==1)) return(x*y)
+  c(x[1:many]*y[1:many], x[(many+1):nx]*y[(many+1):ny])
+  }
+
+ORi = function(x,y) {    # x+y-xy == 1-(1-x)*(1-y)
+  nx = length(x)
+  ny = length(y)
+  if ((nx==1) && (ny==1)) return(1-(1-x)*(1-y))
+  c(1-(1-x[1:many] )*(1-y[1:many]), 1-(1-x[(many+1):nx] )*(1-y[(many+1):ny]))
+  }
+
+OPi = function(x,y,op) { # op can be '+', '-', '*', '/', '^', 'pmin', or 'pmax'
+  nx = length(x)
+  ny = length(y) 
+  if (op=='-') return(OPi(x, c(-y[(many+1):ny], -y[1:many]),'+'))
+  if (op=='/') return(OPi(x, c(1/y[(many+1):ny], 1/y[1:many]),'*'))
+  if ((nx==1) && (ny==1)) return(do.call(op,list(x,y)))
+  if (nx==1) return(c(do.call(op,list(x,y[1:many])), do.call(op,list(x,y[(many+1):ny]))))
+  if (ny==1) return(c(do.call(op,list(x[1:many],y)), do.call(op,list(x[(many+1):nx],y))))
+  c(do.call(op,list(x[1:many],y[1:many])), do.call(op,list(x[(many+1):nx],y[(many+1):ny])))
+  }
+
+opi = function(x,y,op) {  # in case it is not obvious what OPi is doing
+  nx = length(x)
+  ny = length(y) 
+  if ((nx==1) && (ny==1)) return(do.call(op,list(x,y)))
+  if (nx==1) return(opi(rep(x,2*many),y))
+  if (ny==1) return(opi(x,rep(y,2*many)))
+  if (op=='+') return(c(x[1:many]+y[1:many], x[(many+1):nx]+y[(many+1):ny]))
+  if (op=='-') return(opi(x, c(-y[(many+1):ny], -y[1:many]),'+'))
+  if (op=='*') return(c(x[1:many]*y[1:many], x[(many+1):nx]*y[(many+1):ny]))
+  if (op=='/') return(opi(x, c(1/y[(many+1):ny], 1/y[1:many]),'*'))
+  if (op=='^') return(c(x[1:many]^y[1:many], x[(many+1):nx]^y[(many+1):ny]))
+  if ((op=='min') || (op=='pmin')) return(c(pmin(x[1:many],y[1:many]), pmin(x[(many+1):nx],y[(many+1):ny])))
+  if ((op=='max') || (op=='pmax')) return(c(pmax(x[1:many],y[1:many]), pmax(x[(many+1):nx],y[(many+1):ny])))
+  stop('ERROR unknown operator in opi')
+  }
+
+plotbox <- function(b,new=TRUE,col='blue',lwd=2,xlim=range(b[is.finite(b)]),ylim=c(0,1),xlab='',ylab='Prob',...) {
+  edf <- function (x, col, lwd, ...) {
+      n <- length(x)
+      s <- sort(x)
+      lines(c(s[[1]],s[[1]]),c(0,1/n),lwd=lwd,col=col,...)
+      for (i in 2:n) lines(c(s[[i-1]],s[[i]],s[[i]]),c(i-1,i-1,i)/n,col=col,lwd=lwd,...)
+      }
+  b = ifelse(b==-Inf, xlim[1] - 10, b)
+  b = ifelse(b==Inf, xlim[2] + 10, b)
+  if (new) plot(NULL, xlim=xlim, ylim=ylim, xlab=xlab, ylab=ylab)
+  if (length(b) < many) edf(b,col,lwd) else
+  edf(c(min(b),max(b),b[1:min(length(b),many)]),col,lwd)
+  if (many < length(b)) edf(c(min(b),max(b),b[(many+1):length(b)]),col,lwd)
+  }
+
+ci <- function(b, c=0.95, alpha=(1-c)/2, beta=1-(1-c)/2) {
+  left = sort(b[1:many])[round(alpha*many)]
+  if (many < length(b)) right = sort(b[(many+1):length(b)])[round(beta*many)] else
+  right = sort(b[1:many])[round(beta*many)]
+  c(left,right)
+  }
+
+Get_Q <- function( m_in , c_in , k = ( 0:(m_in*c_in) ) ){
+  Q_size_GLBL <- function( m ){ 1 + m + m*(m+1)/2 + m*(m+1)*(m+2)*(3*m+1)/24 }
+  Q_size_LoCL <- function( m , c ){ 1 + c + m*c*(c+1)/2 }
+  Grb_Q <- function( m_in , c_in , Q_list ){
+    m = max( m_in , c_in )
+    c = min( m_in , c_in )
+    i_min = Q_size_GLBL( m - 1 ) + Q_size_LoCL( m , c-1 ) + 1
+    Q_list[i_min:(i_min + m*c)]
+    }
+  AddingQ <- function( m , Q_list ){
+    Q_list[ Q_size_GLBL( m - 1 ) + 1 ] = 1       
+    for( c in 1:m ){
+        i_min = Q_size_GLBL( m - 1 ) + Q_size_LoCL( m , c-1 ) + 1
+        Q1 = c( Grb_Q( m-1 , c , Q_list ) , rep(0,c)  )
+        Q2 = c( rep(0,m), Grb_Q( m , c-1 , Q_list )  )
+        Q_list[ i_min:(i_min + m*c) ] = Q1 + Q2
+        }
+    Q_list[(Q_size_GLBL( m-1 ) + 1):Q_size_GLBL( m )]
+    }
+  Bld_Q <- function( m_top ){
+    Q_out = rep(0,Q_size_GLBL( m_top ))
+    Q_out[1] = 1
+    for( m in 1:m_top )
+      Q_out[ (Q_size_GLBL( m - 1 ) + 1):(Q_size_GLBL( m )) ] = AddingQ( m , Q_out )
+    Q_out
+    }
+  # body of Get_Q
+  m = max( m_in , c_in )
+  c = min( m_in , c_in )
+  Grb_Q(m, c, Bld_Q(m))[k+1]
+  }
+# Caroline’s additional ancillary functions 
+
+data = function(Y,N) return(c(rep(0,Y), rep(1,N)))
+B = parameter.bernoulli
+
+# CASE STUDY USED IN ESREL 2020 CONFERENCE PAPER!!!!!!!!!!!!!!!!!
+FHD = KN(2,4)
+
+H = KN (9,238)
+
+D = KN(13,238)
+
+FHnD = KN(3,5)
+
+nD = KN(225,238)
+
+FnHD = KN(0,9)
+
+nH = KN (229,238)
+
+FnHnD= KN(2,220)
+
+HD = KN(4,13)
+nHD = KN(9,13)
+HnD = KN(5,225)
+nHnD = KN(220,225)
+
+#Prediction
+# F= FHD * HD  * D + FnHD * nHD * D + FHnD * HnD * nD + FnHnD * nHnD * nD       # should be about zero
+# F =   P(F|H,D) x P(H|D) x P(D) + P(F|¬H,D) x P(¬H|D) x P(D) + P(F|H,¬D) x P(H|¬D) x P(¬D) + P(F|¬H,¬D) x P(¬H|¬D) x P(¬D)
+
+#Diagnosis
+#P(D|F) = P(F|H,D) x P(H|D) x P(D  ) + P(F|¬H,D) x P(¬H|D) x P(D  ) / P(F|H,D) x P(H|D) x P(D  ) + P(F|¬H,D) x P(¬H|D) x P(D  ) + P(F|H,¬D) x P(H|¬D) x P(¬D) + P(F|¬H,¬D) x P(¬H|¬D) x P(¬D)
+
+DF = (FHD * HD * D + FnHD * nHD * D) / ( FHD * HD * D + FnHD * nHD * D + FHnD * HnD * nD + FnHnD * nHnD * nD)
+
+
+#plotbox(F, xlim=c(0,1), col='black')
+plotbox(DF, col='black')
+#plotbox(F, col='black')
